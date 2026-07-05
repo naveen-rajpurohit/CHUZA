@@ -3,10 +3,8 @@
 #include "Secrets.h"
 #include "CHUZAWheels.h"
 #include "EnvSensor.h"
-#include "EnvSensorPrinter.h"
 #include "MqttLink.h"
 #include "Scheduler.h"
-#include "MotorTestCLI.h"
 
 CHUZAWheels wheels(PIN_LF, PIN_LB, PIN_RF, PIN_RB);
 EnvSensor envSensor(PIN_SDA, PIN_SCL);
@@ -19,10 +17,6 @@ void updateMotors() {
 
 void updateEnvSensor() {
     envSensor.update();
-}
-
-void printEnv() {
-    printEnvReading(envSensor);
 }
 
 void updateMqtt() {
@@ -44,21 +38,18 @@ void setup() {
     }
 
     delay(2000);
-    beginMotorTestCLI();
 
     mqttLink.begin(WIFI_SSID, WIFI_PASSWORD,
                    MQTT_HOST, MQTT_PORT,
                    MQTT_USERNAME, MQTT_PASSWORD,
                    MQTT_CLIENT_ID);
 
-    scheduler.addTask(updateMotors, 5);        // motor ramp tick, every 10ms
+    scheduler.addTask(updateMotors, 10);        // motor ramp tick, every 10ms
     scheduler.addTask(updateEnvSensor, 50);     // BME280 sample tick, every 50ms
-    scheduler.addTask(printEnv, 500);           // human-readable serial dump
-    scheduler.addTask(updateMqtt, 7);          // MQTT network loop + reconnects
+    scheduler.addTask(updateMqtt, 20);          // MQTT network loop + reconnects
     scheduler.addTask(publishTelemetryMqtt, 1500); // push telemetry to the cloud
 }
 
 void loop() {
     scheduler.run();
-    pollMotorTestCLI(wheels);
 }

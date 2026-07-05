@@ -5,7 +5,7 @@ import time
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
-import paho.mqtt.client as mqtt
+import paho.mqtt.client as mqtt # type: ignore
 
 APP_TITLE = "CHUZA Control"
 
