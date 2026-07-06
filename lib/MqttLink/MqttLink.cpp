@@ -31,8 +31,8 @@ static const uint16_t CMD_BUFFER_SIZE = 512;
 static const unsigned long TELEMETRY_INTERVAL_MS = 1500;
 static const unsigned long THERMAL_CHECK_INTERVAL_MS = 1000;
 
-MqttLink::MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam)
-    : _wheels(wheels), _env(env), _cam(cam),
+MqttLink::MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist)
+    : _wheels(wheels), _env(env), _cam(cam), _batt(batt), _dist(dist),
       _cmdMqtt(_cmdWifiClient), _mediaMqtt(_mediaWifiClient) {
     _instance = this;
 }
@@ -132,11 +132,14 @@ bool MqttLink::isConnected() {
 void MqttLink::publishTelemetry() {
     if (!_mediaMqtt.connected()) return;
 
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     doc["tempC"]       = _env.getTemperatureC();
     doc["humidity"]    = _env.getHumidityPct();
     doc["pressureHpa"] = _env.getPressureHpa();
     doc["altitudeM"]   = _env.getAltitudeM();
+    doc["battV"]       = _batt.getVoltage();
+    doc["battPct"]     = _batt.getPercent();
+    doc["distanceMm"]  = _dist.getDistanceMm();
     doc["camOn"]       = _cam.isEnabled();
     doc["camFps"]      = _cam.getFps();
     doc["chipTempC"]   = _cam.getChipTempC();
@@ -145,7 +148,7 @@ void MqttLink::publishTelemetry() {
     // path (CHUZALocalLink) when it's on the same network as the robot.
     doc["ip"]          = WiFi.localIP().toString();
 
-    char buf[256];
+    char buf[384];
     size_t n = serializeJson(doc, buf, sizeof(buf));
     _mediaMqtt.publish(TOPIC_TELEMETRY, (const uint8_t*)buf, n);
 }

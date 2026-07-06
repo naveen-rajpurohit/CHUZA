@@ -7,6 +7,8 @@
 #include <freertos/task.h>
 #include "CHUZAWheels.h"
 #include "EnvSensor.h"
+#include "BatterySensor.h"
+#include "DistanceSensor.h"
 #include "CHUZACamera.h"
 
 // Connects to WiFi + a TLS MQTT broker (HiveMQ Cloud) using TWO
@@ -42,7 +44,7 @@
 // duplicating the same video.
 class MqttLink {
 public:
-    MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam);
+    MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist);
 
     // Call once in setup(). Blocks for a few seconds while WiFi and the
     // cmd connection come up (the media connection connects lazily from
@@ -75,6 +77,8 @@ private:
     CHUZAWheels &_wheels;
     EnvSensor &_env;
     CHUZACamera &_cam;
+    BatterySensor &_batt;
+    DistanceSensor &_dist;
 
     WiFiClientSecure _cmdWifiClient;
     PubSubClient _cmdMqtt;

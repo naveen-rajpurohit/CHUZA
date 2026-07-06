@@ -384,9 +384,11 @@ class ControlApp:
         self.hum_var = tk.StringVar(value="Humidity: -- %")
         self.pres_var = tk.StringVar(value="Pressure: -- hPa")
         self.alt_var = tk.StringVar(value="Altitude: -- m")
+        self.batt_var = tk.StringVar(value="Battery: -- %")
+        self.dist_var = tk.StringVar(value="Distance: -- mm")
         self.chip_temp_var = tk.StringVar(value="Chip: -- °C")
 
-        for var in (self.temp_var, self.hum_var, self.pres_var, self.alt_var):
+        for var in (self.temp_var, self.hum_var, self.pres_var, self.alt_var, self.batt_var, self.dist_var):
             ttk.Label(telem, textvariable=var, font=("Consolas", 10), width=24).pack(
                 anchor="w"
             )
@@ -456,6 +458,16 @@ class ControlApp:
             self.pres_var.set(f"Pressure: {data['pressureHpa']:.2f} hPa")
         if "altitudeM" in data:
             self.alt_var.set(f"Altitude: {data['altitudeM']:.2f} m")
+        if "battPct" in data:
+            battV = data.get("battV")
+            suffix = f" ({battV:.2f}V)" if battV is not None else ""
+            self.batt_var.set(f"Battery: {data['battPct']}%{suffix}")
+        if "distanceMm" in data:
+            # 8190 is the VL53L0X's own "nothing in range" sentinel, not a real distance.
+            if data["distanceMm"] >= 8190:
+                self.dist_var.set("Distance: out of range")
+            else:
+                self.dist_var.set(f"Distance: {data['distanceMm']} mm")
         if "chipTempC" in data:
             self.chip_temp_var.set(f"Chip: {data['chipTempC']:.1f} °C")
         if "camOverheat" in data:

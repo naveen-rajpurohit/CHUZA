@@ -11,9 +11,16 @@
 #define PIN_RF   D0
 #define PIN_RB   D6
 
-// I2C bus (BME280 environmental sensor, and anything else on the bus)
+// I2C bus (BME280 environmental sensor, VL53L0X time-of-flight distance
+// sensor, and anything else on the bus)
 #define PIN_SDA  D4
 #define PIN_SCL  D5
+
+// Battery voltage sense: midpoint of a resistor divider across the
+// battery, read on an ADC-capable pin. The divider halves the battery
+// voltage before it reaches this pin, so BatterySensor doubles the
+// reading back out.
+#define PIN_BATT_SENSE D2
 
 // Onboard OV2640 camera (XIAO ESP32S3 Sense). Fixed silicon routing on
 // the Sense sensor board — these are GPIO numbers, not D-pin aliases,

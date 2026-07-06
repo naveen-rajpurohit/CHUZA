@@ -3,6 +3,8 @@
 #include "Secrets.h"
 #include "CHUZAWheels.h"
 #include "EnvSensor.h"
+#include "BatterySensor.h"
+#include "DistanceSensor.h"
 #include "CHUZACamera.h"
 #include "MqttLink.h"
 #include "CHUZALocalLink.h"
@@ -10,6 +12,8 @@
 
 CHUZAWheels wheels(PIN_LF, PIN_LB, PIN_RF, PIN_RB);
 EnvSensor envSensor(PIN_SDA, PIN_SCL);
+BatterySensor battery(PIN_BATT_SENSE);
+DistanceSensor distanceSensor(PIN_SDA, PIN_SCL);
 
 CameraPins camPins = {
     CAM_PIN_PWDN, CAM_PIN_RESET, CAM_PIN_XCLK, CAM_PIN_SIOD, CAM_PIN_SIOC,
@@ -18,7 +22,7 @@ CameraPins camPins = {
 };
 CHUZACamera camera(camPins);
 
-MqttLink mqttLink(wheels, envSensor, camera);
+MqttLink mqttLink(wheels, envSensor, camera, battery, distanceSensor);
 CHUZALocalLink localLink(wheels, camera);
 Scheduler scheduler;
 
@@ -30,6 +34,14 @@ void updateEnvSensor() {
     envSensor.update();
 }
 
+void updateBattery() {
+    battery.update();
+}
+
+void updateDistance() {
+    distanceSensor.update();
+}
+
 void setup() {
     Serial.begin(115200);
 
@@ -39,6 +51,12 @@ void setup() {
     if (!envSensor.begin()) {
         Serial.println("BME280 not found - check wiring/I2C address");
     }
+
+    if (!distanceSensor.begin()) {
+        Serial.println("VL53L0X not found - check wiring/I2C address");
+    }
+
+    battery.begin();
 
     if (!camera.begin()) {
         Serial.println("Camera init failed - check the Sense board/ribbon cable");
@@ -61,8 +79,10 @@ void setup() {
     // robot, for far lower latency and higher fps than the cloud path.
     localLink.begin();
 
-    scheduler.addTask(updateMotors, 10);    // motor ramp tick, every 10ms
-    scheduler.addTask(updateEnvSensor, 50); // BME280 sample tick, every 50ms
+    scheduler.addTask(updateMotors, 10);     // motor ramp tick, every 10ms
+    scheduler.addTask(updateEnvSensor, 50);  // BME280 sample tick, every 50ms
+    scheduler.addTask(updateBattery, 500);   // battery voltage tick, every 500ms
+    scheduler.addTask(updateDistance, 100);  // VL53L0X ranging tick, every 100ms
 }
 
 void loop() {
