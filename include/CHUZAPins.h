@@ -22,6 +22,15 @@
 // reading back out.
 #define PIN_BATT_SENSE D2
 
+// Capacitive touch pad (petting sensor) for CHUZAFace's mood engine and
+// menu navigation. Any GPIO1-14 works for touch on the ESP32-S3; D1 was
+// free.
+#define PIN_TOUCH D1
+
+// Piezo buzzer for CHUZAFace's beeps/jingles (touch chirps, mood/menu/
+// stopwatch/timer events).
+#define PIN_BUZZER D8
+
 // Onboard OV2640 camera (XIAO ESP32S3 Sense). Fixed silicon routing on
 // the Sense sensor board — these are GPIO numbers, not D-pin aliases,
 // and don't overlap with the D-pins used above.

@@ -16,3 +16,8 @@
 #define MQTT_PASSWORD  "YOUR_MQTT_PASSWORD"
 
 #define MQTT_CLIENT_ID "your-robot-client-id"
+
+// Local time, for the OLED menu's clock page (synced over NTP once WiFi
+// is up - see configTime() in main.cpp). Offset is in seconds from UTC.
+#define TIMEZONE_OFFSET_SEC (5 * 3600 + 30 * 60) // UTC+5:30 (India)
+#define NTP_SERVER "pool.ntp.org"
