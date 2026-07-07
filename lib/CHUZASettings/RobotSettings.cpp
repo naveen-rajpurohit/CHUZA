@@ -25,6 +25,7 @@ void RobotSettings::loadFromNvs() {
     wheelMinPwm      = _prefs.getUChar("wheelMinPwm", wheelMinPwm);
     wheelMaxPwm      = _prefs.getUChar("wheelMaxPwm", wheelMaxPwm);
     wheelRampRate    = _prefs.getUShort("rampRate", wheelRampRate);
+    wheelTrimPct     = _prefs.getChar("wheelTrim", wheelTrimPct);
 
     motorsEnabled     = _prefs.getBool("motorsOn", motorsEnabled);
     oledEnabled       = _prefs.getBool("oledOn", oledEnabled);
@@ -51,6 +52,7 @@ void RobotSettings::saveAsDefault() {
     _prefs.putUChar("wheelMinPwm", wheelMinPwm);
     _prefs.putUChar("wheelMaxPwm", wheelMaxPwm);
     _prefs.putUShort("rampRate", wheelRampRate);
+    _prefs.putChar("wheelTrim", wheelTrimPct);
 
     _prefs.putBool("motorsOn", motorsEnabled);
     _prefs.putBool("oledOn", oledEnabled);
@@ -66,6 +68,7 @@ void RobotSettings::saveAsDefault() {
 void RobotSettings::applyToHardware() {
     _wheels.setRampRate((float)wheelRampRate);
     _wheels.setPwmRange(wheelMinPwm, wheelMaxPwm);
+    _wheels.setMotorTrim(wheelTrimPct);
     _wheels.setEnabled(motorsEnabled);
 
     _face.setAngryTimeoutMs((unsigned long)angryTimeoutSec * 1000UL);
@@ -97,6 +100,9 @@ bool RobotSettings::mergeFields(JsonObjectConst obj) {
     auto b = [&](const char *key, bool &field) {
         if (obj.containsKey(key)) { field = obj[key].as<bool>(); changed = true; }
     };
+    auto i8 = [&](const char *key, int8_t &field) {
+        if (obj.containsKey(key)) { field = obj[key].as<int8_t>(); changed = true; }
+    };
 
     u16("angryTimeoutSec", angryTimeoutSec);
     u16("tiredHoldSec", tiredHoldSec);
@@ -109,6 +115,7 @@ bool RobotSettings::mergeFields(JsonObjectConst obj) {
     u8("wheelMinPwm", wheelMinPwm);
     u8("wheelMaxPwm", wheelMaxPwm);
     u16("wheelRampRate", wheelRampRate);
+    i8("wheelTrimPct", wheelTrimPct);
 
     b("motorsEnabled", motorsEnabled);
     b("oledEnabled", oledEnabled);
@@ -130,6 +137,7 @@ bool RobotSettings::mergeFields(JsonObjectConst obj) {
     wheelMinPwm = constrain(wheelMinPwm, (uint8_t)0, (uint8_t)255);
     wheelMaxPwm = constrain(wheelMaxPwm, wheelMinPwm, (uint8_t)255);
     wheelRampRate = constrain(wheelRampRate, (uint16_t)10, (uint16_t)2000);
+    wheelTrimPct = constrain(wheelTrimPct, (int8_t)-50, (int8_t)50);
     wanderMode = constrain(wanderMode, (uint8_t)0, (uint8_t)2);
 
     return true;
@@ -154,6 +162,7 @@ void RobotSettings::toJson(JsonDocument &doc) const {
     doc["wheelMinPwm"] = wheelMinPwm;
     doc["wheelMaxPwm"] = wheelMaxPwm;
     doc["wheelRampRate"] = wheelRampRate;
+    doc["wheelTrimPct"] = wheelTrimPct;
 
     doc["motorsEnabled"] = motorsEnabled;
     doc["oledEnabled"] = oledEnabled;

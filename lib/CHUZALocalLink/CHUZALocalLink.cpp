@@ -15,7 +15,15 @@ CHUZALocalLink::CHUZALocalLink(CHUZAWheels &wheels, CHUZACamera &cam)
 
 void CHUZALocalLink::begin() {
     _udp.begin(UDP_PORT);
-    xTaskCreatePinnedToCore(udpTaskTrampoline, "chuzaUdp", 4096, this, 2, &_udpTaskHandle, 0);
+    // Was 4096 - same latent bug MqttLink's "chuzaCmd" task hit and fixed
+    // (see its startNetworkTask() comment): dispatchRobotCommand()'s
+    // locals (StaticJsonDocument<1024> + a 1025-byte char buf) are sized
+    // for the largest possible payload (settings), and every command
+    // received over UDP runs through that same shared dispatcher on this
+    // task's stack - overflowed the instant a real command arrived here,
+    // panicking with "Stack canary watchpoint triggered (chuzaUdp)" and
+    // rebooting, which looked like "movement doesn't work over LAN".
+    xTaskCreatePinnedToCore(udpTaskTrampoline, "chuzaUdp", 16384, this, 2, &_udpTaskHandle, 0);
 
     // Two separate httpd instances (see the class comment in the header
     // for why): /ping on 80 must always answer instantly regardless of

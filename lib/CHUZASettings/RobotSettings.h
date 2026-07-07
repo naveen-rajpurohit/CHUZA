@@ -44,6 +44,7 @@ public:
     uint8_t wheelMinPwm = 180;
     uint8_t wheelMaxPwm = 255;
     uint16_t wheelRampRate = 250; // percent/sec
+    int8_t wheelTrimPct = 0; // -50..50; +right slower, -left slower - corrects L/R speed mismatch
 
     // --- Hardware on/off ---
     bool motorsEnabled = true;

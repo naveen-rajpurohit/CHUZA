@@ -90,8 +90,10 @@ void CHUZAWheels::update() {
     _leftCurrent  = approach(_leftCurrent,  (float)_leftTarget,  maxStep);
     _rightCurrent = approach(_rightCurrent, (float)_rightTarget, maxStep);
 
-    applyMotorOutput(0, 1, (int)round(_leftCurrent));
-    applyMotorOutput(2, 3, (int)round(_rightCurrent));
+    int leftOut, rightOut;
+    computeTrimmedSpeeds((int)round(_leftCurrent), (int)round(_rightCurrent), leftOut, rightOut);
+    applyMotorOutput(0, 1, leftOut);
+    applyMotorOutput(2, 3, rightOut);
 }
 
 void CHUZAWheels::stop() {
@@ -134,8 +136,10 @@ void CHUZAWheels::setInstant(int leftSpeedPct, int rightSpeedPct) {
     _leftCurrent = (float)leftSpeedPct;
     _rightCurrent = (float)rightSpeedPct;
 
-    applyMotorOutput(0, 1, leftSpeedPct);
-    applyMotorOutput(2, 3, rightSpeedPct);
+    int leftOut, rightOut;
+    computeTrimmedSpeeds(leftSpeedPct, rightSpeedPct, leftOut, rightOut);
+    applyMotorOutput(0, 1, leftOut);
+    applyMotorOutput(2, 3, rightOut);
 }
 
 void CHUZAWheels::setCliffBlocked(bool blocked) {
@@ -160,6 +164,22 @@ unsigned long CHUZAWheels::msSinceManualCommand() const {
 void CHUZAWheels::setPwmRange(int minPwm, int maxPwm) {
     _minPwm = constrain(minPwm, 0, 255);
     _maxPwm = constrain(maxPwm, _minPwm, 255);
+}
+
+void CHUZAWheels::setMotorTrim(int trimPct) {
+    _trimPct = constrain(trimPct, -50, 50);
+}
+
+void CHUZAWheels::computeTrimmedSpeeds(int leftIn, int rightIn, int &leftOut, int &rightOut) const {
+    leftOut = leftIn;
+    rightOut = rightIn;
+    if (_trimPct > 0) {
+        // Right motor is the faster one - slow it down to match the left.
+        rightOut = (int)round(rightIn * (100 - _trimPct) / 100.0f);
+    } else if (_trimPct < 0) {
+        // Left motor is the faster one - slow it down to match the right.
+        leftOut = (int)round(leftIn * (100 + _trimPct) / 100.0f);
+    }
 }
 
 void CHUZAWheels::setEnabled(bool enabled) {

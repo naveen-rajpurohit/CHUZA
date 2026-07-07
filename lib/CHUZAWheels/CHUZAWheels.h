@@ -65,6 +65,15 @@ public:
     // Clamped to [0,255] with min <= max.
     void setPwmRange(int minPwm, int maxPwm);
 
+    // Corrects for one drive motor spinning faster than the other at
+    // the same commanded speed. Signed percentage, clamped to
+    // [-50, 50]: positive trims the RIGHT side down by that percent
+    // (right was spinning faster), negative trims the LEFT side down
+    // by that percent (left was spinning faster). Never boosts a side
+    // past the caller's requested speed - only slows the faster one
+    // down to match, since there's no PWM headroom to boost into.
+    void setMotorTrim(int trimPct);
+
     // Hardware kill-switch (RobotSettings' "motorsEnabled"). Disabling
     // brakes immediately, then every speed-setting entry point below
     // clamps to 0 - in both directions, unlike the cliff clamp - until
@@ -75,6 +84,7 @@ public:
 private:
     void applyMotorOutput(uint8_t fwdChannel, uint8_t revChannel, int speedPct);
     int clampForSafety(int speedPct) const;
+    void computeTrimmedSpeeds(int leftIn, int rightIn, int &leftOut, int &rightOut) const;
 
     uint8_t _lfPin, _lbPin, _rfPin, _rbPin;
 
@@ -87,6 +97,7 @@ private:
     // section).
     int _minPwm = 180;
     int _maxPwm = 255;
+    int _trimPct = 0;
 
     // --- Ramping state ---
     float _rampRatePctPerSec = 300.0f; // default; override with setRampRate()
