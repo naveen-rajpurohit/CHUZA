@@ -1,8 +1,8 @@
 {
-  "broker_host": "YOUR_CLUSTER_ID.s1.eu.hivemq.cloud",
+  "broker_host": "REPLACE_ME.s1.eu.hivemq.cloud",
   "broker_port": 8883,
-  "username": "YOUR_MQTT_USERNAME",
-  "password": "YOUR_MQTT_PASSWORD",
+  "username": "REPLACE_ME",
+  "password": "REPLACE_ME",
   "topic_status": "robot/status",
   "topic_telemetry": "robot/telemetry",
   "topic_commands": "robot/commands",

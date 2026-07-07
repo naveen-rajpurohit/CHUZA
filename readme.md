@@ -1,94 +1,156 @@
-# CHUZA V1 🤖
+<p align="center">
+  <img src="docs/images/logo.png" alt="CHUZA" width="360">
+</p>
 
-Welcome to the development repository for **CHUZA V1**, my autonomous, internet-connected desktop companion robot.
+<h3 align="center">An autonomous, internet-connected desktop companion robot</h3>
 
-This project bridges embedded systems, real-time control, and cloud connectivity. CHUZA is designed to be more than just an RC car; it's an autonomous desktop "pet" featuring a dynamic OLED personality, capacitive touch reflexes, environmental sensing, and a globally accessible FPV video feed.
+<p align="center">
+  Built on an ESP32-S3 — animated OLED face, capacitive-touch reflexes, environmental sensing,<br>
+  a globally-accessible FPV feed, and a custom desktop control app.
+</p>
 
-This README serves as my engineering roadmap, documenting the phased architecture I am using to bring CHUZA to life.
-
-## 🛠️ Hardware & Tech Stack
-
-* **Microcontroller:** ESP32-S3 (Dual-core, WiFi, hardware capacitive touch)
-* **Actuation:** DRV8833 Motor Driver
-* **Sensors:** VL53L0X (Time-of-Flight distance/edge detection), BME280 (Temp/Humidity/Pressure)
-* **Interface:** I2C OLED Display (U8g2/Adafruit_SSD1306), PWM Buzzer
-* **Networking:** MQTT, WebSockets, NTP
-* **Client App:** Progressive Web App (HTML/JS/React/Vue)
-
----
-
-## 🗺️ Development Roadmap
-
-### Phase 1: The Nervous System (Core Hardware & Actuation)
-
-*Before giving CHUZA a brain or internet access, I need to ensure its physical muscles and senses are reliable.*
-
-* **Motor Control:** Implement basic locomotion functions (`moveForward`, `turnLeft`, `turnRight`, `stop`) via the DRV8833. The goal is precise, controlled bursts rather than continuous speed.
-* **Distance & Edge Sensing:** Configure the VL53L0X over I2C. I'll need to calibrate two critical thresholds: one for forward obstacle avoidance, and a downward-facing "cliff" threshold to prevent CHUZA from driving off my desk.
-* **Environmental Data:** Establish I2C communication with the BME280 to monitor ambient temperature, humidity, and pressure.
-* **Audio Feedback:** Utilize the ESP32's hardware PWM to create non-blocking chirps and beeps through the buzzer for status alerts.
-
-### Phase 2: The Face & Touch (UI and Input)
-
-*Building CHUZA's visual personality and tactile input processing.*
-
-* **OLED Expressions:** Using an OLED library, I will draw dynamic "eyes" and expressions (`drawNeutral`, `drawBlink`, `drawHappy`, `lookLeft`).
-* **Capacitive Touch Timing:** Utilizing the ESP32-S3's built-in capacitive touch pins, I'm building a timing algorithm to differentiate user taps. A ~400ms window will distinguish between commands:
-* **Single Tap:** Trigger an expression change.
-* **Triple Tap:** Open the system menu.
-
-
-* **UI State Machine:** The main loop will handle display states efficiently:
-
-| State | Mode | Function |
-| --- | --- | --- |
-| **0** | Pet Mode | Default state displaying animated eyes and idle behaviors. |
-| **1** | Menu | Configuration menu accessed via triple-tap. |
-| **2** | Sensor Display | Live readout of BME280 environmental data. |
-| **3** | Clock / Notes | Digital clock (NTP synced) and incoming cloud messages. |
-
-### Phase 3: The Brain (Autonomous Pet Logic)
-
-*Fusing movement and UI into an autonomous, responsive system—running entirely locally.*
-
-* **Strictly Non-Blocking Logic:** The `delay()` function is strictly forbidden in this architecture. I am using `millis()` timers to track when to move, blink, or poll sensors.
-* **The Wander Algorithm:** In "Pet Mode," CHUZA will use `random()` to pick directions and short movement durations (0.5 – 1.5 seconds) to simulate organic exploration before returning to idle.
-* **Reflexes:** The main loop will continuously poll the VL53L0X. If an edge or obstacle is detected, an immediate "reflex" will trigger: stop, back up, turn, and beep, overriding any current wander command.
-
-### Phase 4: Global Communication (WAN Connectivity)
-
-*Taking CHUZA off the local network so I can interact with it from anywhere in the world.*
-
-* **NTP Sync:** Fetch local time via Network Time Protocol to power the OLED digital clock.
-* **MQTT Architecture:** I am routing data through a lightweight MQTT broker (e.g., HiveMQ, Adafruit IO, or AWS IoT) for bidirectional, low-latency control.
-* **Subscribe:** `robot/commands` (manual driving) and `robot/notes` (text to display on the OLED).
-* **Publish:** `robot/telemetry` (BME280 data and battery status back to the cloud).
-
-
-
-### Phase 5: FPV Camera Streaming (The WAN Bridge)
-
-*The most technically demanding phase: streaming high-bandwidth video over a global connection from a microcontroller.*
-
-* **Local Baseline:** First, initialize the `esp_camera` library to establish a basic HTTP MJPEG stream on my local network to verify hardware focus and wiring.
-* **Cloud Relay Server:** Since standard MQTT can't handle live video, I am building a lightweight relay server (Node.js/Python hosted on Render/Heroku/AWS).
-* **WebSocket Pipeline:** The ESP32 will open a WebSocket connection to the cloud server and push JPEG frames as binary data. My client app will connect to that same server to pull the frames in real-time.
-
-### Phase 6: The Control Hub (Client App)
-
-*A unified dashboard to control CHUZA from both my laptop and phone.*
-
-* **Progressive Web App (PWA):** Instead of building native apps twice, I am developing a responsive web dashboard.
-* **Direct Integration:** The PWA connects directly to the MQTT broker via WebSockets to send joystick commands and notes.
-* **Video Canvas:** A dedicated canvas element will render the incoming JPEG frames pushed from the cloud relay server for a seamless FPV driving experience.
+<p align="center">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-ESP32--S3-3ddc84?style=flat-square">
+  <img alt="Framework" src="https://img.shields.io/badge/framework-Arduino%20%2F%20PlatformIO-3ddc84?style=flat-square">
+  <img alt="App" src="https://img.shields.io/badge/control%20app-Python%20%2F%20Tkinter-3ddc84?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-39ff14?style=flat-square">
+</p>
 
 ---
 
-## ⚙️ System Optimization: FreeRTOS
+CHUZA is more than an RC car — it's an autonomous desktop "pet" that wanders, reacts to petting, watches for the edge of the desk, and streams a live first-person video feed from anywhere in the world. This repo holds the full stack: the ESP32-S3 firmware, the wiring, and the companion desktop app used to drive it.
 
-To prevent bottlenecks between heavy networking (camera streaming) and precise hardware timing (I2C, touch, motors), I am utilizing **FreeRTOS tasks**.
+## Contents
 
-* **Core 0:** Pinned to handle the `esp_camera` streaming and WiFi tasks.
-* **Core 1:** Dedicated to motor control, sensor polling, and OLED updates.
+- [Features](#features)
+- [CHUZA Control (desktop app)](#chuza-control-desktop-app)
+- [Architecture](#architecture)
+- [Hardware & wiring](#hardware--wiring)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Repo structure](#repo-structure)
+- [How it was built](#how-it-was-built)
+- [License](#license)
 
-*This separation ensures that a delayed video frame over the WAN won't cause CHUZA to miss a cliff edge and fall off the desk.*
+## Features
+
+- **Strictly non-blocking firmware.** `delay()` is banned throughout — a cooperative [`Scheduler`](lib/Scheduler/Scheduler.h) ticks every subsystem off `millis()`, so a slow network call can never make CHUZA miss a cliff edge.
+- **Dual-core FreeRTOS split.** Core 0 owns WiFi, MQTT, and camera streaming; Core 1 owns motors, sensors, touch, and the display — heavy networking can never stall real-time control.
+- **Animated RoboEyes-style face.** A mood engine on the SSD1306 OLED reacts to petting, battery level, and menu state (`lib/CHUZAFace`).
+- **Capacitive touch gestures.** Single tap changes expression, triple tap opens the on-device menu — timing-based, debounced, tuned for the ESP32-S3's inverted touch polarity (`lib/CHUZATouch`).
+- **Autonomous "Wander Mode".** Three intensities (OFF / SOFT / NORMAL) of idle-time exploration, instantly overridden by obstacle/cliff reflexes (`lib/CHUZAWander`).
+- **Reflex safety.** Continuous VL53L0X polling for both forward obstacles and desk-edge "cliff" detection, clamped straight into the motor driver regardless of what's currently commanding it.
+- **Dual connectivity, automatic failover.** A cloud path (TLS MQTT via HiveMQ) works from anywhere; the app auto-detects when it's on the same network as the robot and switches to a LAN-direct UDP + local MJPEG path for far lower latency (`lib/MqttLink`, `lib/CHUZALocalLink`).
+- **Live FPV streaming.** The onboard OV2640 streams MJPEG over whichever transport is active, with a chip-thermal safety cutoff.
+- **Persisted settings.** Every tunable (thresholds, PWM range, timers, per-subsystem enable/disable) lives in one `RobotSettings` model, editable from the app and saved to NVS.
+
+## CHUZA Control (desktop app)
+
+A Tkinter desktop app with a hand-rolled pixel-art "dark jungle" HUD — live telemetry, keyboard driving, and an in-app settings editor, all built directly on top of the same MQTT/UDP protocol the firmware speaks.
+
+<table>
+<tr>
+<td align="center" width="50%"><img src="docs/images/app-login.png" alt="Login screen"><br><sub>Connect screen — broker credentials, reused for in-app "Change Connection"</sub></td>
+<td align="center" width="50%"><img src="docs/images/app-home.png" alt="Home screen"><br><sub>Home — live connection status, PLAY to enter driving mode</sub></td>
+</tr>
+<tr>
+<td align="center" width="50%"><img src="docs/images/app-control.png" alt="Control screen"><br><sub>Control — camera viewport, D-pad readout, HUD telemetry sidebar</sub></td>
+<td align="center" width="50%"><img src="docs/images/app-settings.png" alt="Settings screen"><br><sub>Settings — mirrors <code>RobotSettings</code> field-for-field, session or default save</sub></td>
+</tr>
+</table>
+
+Driving uses **W/A/S/D** (Space to boost, B to brake), with gentle arc-turns while moving and pivot-turns while stationary. **CAPTURE** saves the current frame to disk; **TIMER** schedules an OLED alarm on the robot itself.
+
+## Architecture
+
+| Module | Responsibility |
+|---|---|
+| [`CHUZAWheels`](lib/CHUZAWheels) | DRV8833 motor driver — ramped speed targets, cliff-block clamp, per-side trim |
+| [`CHUZAFace`](lib/CHUZAFace) | RoboEyes OLED face, mood engine, on-device menu state machine |
+| [`CHUZATouch`](lib/CHUZATouch) | Debounced capacitive touch, single/double/triple-tap counting |
+| [`CHUZABuzzer`](lib/CHUZABuzzer) | Non-blocking piezo melody/beep sequencer |
+| [`CHUZAWander`](lib/CHUZAWander) | Autonomous idle-time driving policy (OFF/SOFT/NORMAL) |
+| [`CHUZAEnvSense`](lib/CHUZAEnvSense) | BME280 temperature / humidity / pressure, cached reads |
+| [`CHUZADistance`](lib/CHUZADistance) | VL53L0X time-of-flight ranging for obstacles + cliff edge |
+| [`CHUZABattery`](lib/CHUZABattery) | Resistor-divider ADC read → 0–100% estimate |
+| [`CHUZACamera`](lib/CHUZACamera) | OV2640 capture, enable/disable, thermal safety cutoff |
+| [`CHUZASettings`](lib/CHUZASettings) | Single source of truth for every tunable, NVS persistence |
+| [`MqttLink`](lib/MqttLink) | TLS MQTT over WiFi — two independent connections (commands, telemetry/camera) on Core 0 |
+| [`CHUZALocalLink`](lib/CHUZALocalLink) | LAN-direct UDP commands + local MJPEG stream, always listening |
+| [`CHUZACommand`](lib/CHUZACommand) | Single JSON command dispatcher shared by both MQTT and LAN-direct paths |
+| [`Scheduler`](lib/Scheduler) | Minimal cooperative task scheduler driving the whole `loop()` |
+
+**Command flow:** the app always tries LAN-direct UDP first; if that probe fails (different network, robot out of range), it transparently falls back to publishing on `robot/commands` over MQTT. Both paths route through the same `dispatchRobotCommand()`, so the robot behaves identically either way. Settings and timer commands are cloud-only, since the app's MQTT connection stays up regardless of link mode.
+
+## Hardware & wiring
+
+![CHUZA wiring diagram](docs/images/wiring-diagram.svg)
+
+| Component | Role |
+|---|---|
+| Seeed XIAO ESP32S3 Sense | Main controller — dual-core ESP32-S3, WiFi, onboard OV2640 camera |
+| DRV8833 | Dual H-bridge driver for the two drive motors |
+| VL53L0X | Time-of-flight sensor — forward obstacles + downward cliff edge |
+| BME280 | Temperature / humidity / pressure |
+| SSD1306 (128×64, I2C) | Animated face / menu / clock display |
+| Piezo buzzer | Non-blocking chirps and status tones |
+| Capacitive touch pad | Petting input for the mood engine + menu access |
+| LiPo cell + resistor divider | Power, with a halved-voltage tap into an ADC pin for battery %/voltage |
+
+Pin assignments are centralized in [`include/CHUZAPins.h`](include/CHUZAPins.h) — nothing else in the codebase hardcodes a GPIO number. Two 3D-printed wheels (SolidWorks source + STL) live under [`Wheels/`](Wheels).
+
+## Tech stack
+
+**Firmware** — C++ / Arduino framework via PlatformIO, targeting `seeed_xiao_esp32s3`:
+Adafruit BME280 / VL53L0X / SSD1306 / GFX / BusIO, PubSubClient, ArduinoJson.
+
+**Desktop app** (`CHUZAControls/`) — Python 3, Tkinter for UI, `paho-mqtt` for the cloud link, Pillow for image handling, PyInstaller for standalone Windows builds.
+
+## Getting started
+
+### Firmware
+
+1. Open the repo in [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
+2. Fill in your own values in [`include/Secrets.h`](include/Secrets.h) — WiFi credentials and a [HiveMQ Cloud](https://www.hivemq.com/mqtt-cloud-broker/) (or any TLS MQTT broker) host/username/password. The file is tracked as a template with placeholder values on purpose, so **never commit your real credentials over them**.
+3. Build and upload to the `seeed_xiao_esp32s3` environment:
+   ```
+   pio run -t upload
+   ```
+
+### Desktop app
+
+```
+cd CHUZAControls
+pip install -r requirements.txt
+python app.py
+```
+
+On first launch, the login screen asks for the same broker host/username/password you put in `Secrets.h`. To build a standalone Windows executable instead, use the included `CHUZA Control.spec` with PyInstaller.
+
+## Repo structure
+
+```
+CHUZA/
+├── src/main.cpp            # setup()/loop() — wires every module together, owns the scheduler
+├── include/CHUZAPins.h     # every GPIO assignment, in one place
+├── include/Secrets.h       # WiFi + MQTT broker credentials (template — fill in your own)
+├── lib/                    # one focused module per subsystem (see Architecture)
+├── CHUZAControls/          # the Tkinter desktop control app
+├── docs/images/            # README assets — screenshots, wiring diagram
+└── Wheels/                 # 3D-printable wheel parts (SolidWorks + STL)
+```
+
+## How it was built
+
+CHUZA V1 was built in six phases, each one only trusting the layer below it:
+
+1. **Nervous system** — motor control, distance/cliff sensing, environmental sensing, non-blocking buzzer feedback.
+2. **Face & touch** — animated OLED expressions, debounced capacitive tap timing, the on-device menu state machine.
+3. **Brain** — fusing movement and UI into fully local, non-blocking autonomous behavior (Wander Mode + reflexes).
+4. **Global communication** — NTP sync, TLS MQTT for bidirectional cloud control and telemetry.
+5. **FPV streaming** — local MJPEG baseline first, then a LAN-direct UDP/HTTP path for low-latency same-network driving.
+6. **Control hub** — the CHUZA Control desktop app, speaking the exact same command/telemetry protocol as the cloud and LAN paths.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
