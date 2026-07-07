@@ -19,22 +19,19 @@ static const uint8_t OLED_WIDTH = 128;
 static const uint8_t OLED_HEIGHT = 64;
 static const uint8_t OLED_I2C_ADDR = 0x3C;
 
-// How long CHUZA can go without a pet before getting grumpy about it -
-// tune to taste.
-static const unsigned long ANGRY_TIMEOUT_MS = 2UL * 60UL * 1000UL; // 2 minutes
-// Petting that goes on this long turns into a sleepy/tired reaction
-// instead of staying happy, per spec.
-static const unsigned long TIRED_HOLD_MS = 10UL * 1000UL;
-static const uint8_t LOW_BATTERY_PCT = 20;
+// Angry timeout, tired-hold, menu timeout, timer-alarm duration, and the
+// low-battery threshold used to live here as fixed static consts - now
+// user-configurable via RobotSettings, so they're member fields
+// (_angryTimeoutMs etc, see CHUZAFace.h) instead. Defaults are set there.
 
-static const unsigned long MENU_TIMEOUT_MS = 10UL * 1000UL; // per spec
-static const uint8_t MENU_PAGE_COUNT = 5;
+static const uint8_t MENU_PAGE_COUNT = 6;
 static const uint8_t STOPWATCH_PAGE = 3; // "page 4" to the user (1-indexed)
 static const uint8_t TIMER_PAGE = 4;     // "page 5" to the user (1-indexed)
+static const uint8_t MODE_PAGE = 5;      // "page 6" to the user (1-indexed)
+static const char *WANDER_MODE_LABELS[3] = {"OFF", "SOFT", "NORMAL"};
 
 static const uint8_t TIMER_MIN_MIN = 1;
 static const uint8_t TIMER_MAX_MIN = 60;
-static const unsigned long TIMER_ALARM_DURATION_MS = 10UL * 1000UL; // per spec
 static const unsigned long TIMER_ALARM_BEEP_INTERVAL_MS = 400UL;
 
 // Tiny convenience wrapper - Buzzer::playSequence() wants arrays even
@@ -44,9 +41,9 @@ static void playNote(Buzzer &buzzer, uint16_t freqHz, uint16_t durationMs) {
 }
 
 CHUZAFace::CHUZAFace(uint8_t sdaPin, uint8_t sclPin, TouchSensor &touch, Buzzer &buzzer,
-                      EnvSensor &env, BatterySensor &batt, DistanceSensor &dist)
+                      EnvSensor &env, BatterySensor &batt, DistanceSensor &dist, WanderMode &wander)
     : _sdaPin(sdaPin), _sclPin(sclPin), _touch(touch), _buzzer(buzzer), _env(env), _batt(batt), _dist(dist),
-      _display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1) {}
+      _wander(wander), _display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1) {}
 
 CHUZAFace::~CHUZAFace() {
     delete _eyes;
@@ -71,14 +68,38 @@ bool CHUZAFace::begin() {
     return true;
 }
 
+void CHUZAFace::setAngryTimeoutMs(unsigned long ms) { _angryTimeoutMs = ms; }
+void CHUZAFace::setTiredHoldMs(unsigned long ms) { _tiredHoldMs = ms; }
+void CHUZAFace::setMenuTimeoutMs(unsigned long ms) { _menuTimeoutMs = ms; }
+void CHUZAFace::setTimerAlarmDurationMs(unsigned long ms) { _timerAlarmDurationMs = ms; }
+void CHUZAFace::setLowBatteryPct(uint8_t pct) { _lowBatteryPct = pct; }
+
+void CHUZAFace::setDisplayEnabled(bool enabled) {
+    _displayEnabled = enabled;
+    if (_displayFound) {
+        _display.ssd1306_command(enabled ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+    }
+}
+
+void CHUZAFace::startTimer(uint8_t minutes) {
+    minutes = constrain(minutes, TIMER_MIN_MIN, TIMER_MAX_MIN);
+    _timerDurationMin = minutes;
+    _timerSubMenu = false;
+    _timerRunning = true;
+    _timerEndMs = millis() + (unsigned long)minutes * 60000UL;
+    static const uint16_t f[] = {1200, 1600, 2000};
+    static const uint16_t d[] = {50, 50, 70};
+    _buzzer.playSequence(f, d, 3);
+}
+
 void CHUZAFace::updateMood() {
     uint8_t mood;
     if (_touch.isTouched()) {
         // Being petted - happy, unless it's gone on long enough to turn sleepy.
-        mood = (_touch.getHeldDurationMs() > TIRED_HOLD_MS) ? TIRED : HAPPY;
-    } else if (_batt.getPercent() < LOW_BATTERY_PCT) {
+        mood = (_touch.getHeldDurationMs() > _tiredHoldMs) ? TIRED : HAPPY;
+    } else if (_batt.getPercent() < _lowBatteryPct) {
         mood = TIRED;
-    } else if (_touch.getTimeSinceLastTouchMs() > ANGRY_TIMEOUT_MS) {
+    } else if (_touch.getTimeSinceLastTouchMs() > _angryTimeoutMs) {
         mood = ANGRY;
     } else {
         mood = DEFAULT;
@@ -120,7 +141,7 @@ void CHUZAFace::updateTimer() {
     if (_timerRunning && now >= _timerEndMs) {
         _timerRunning = false;
         _timerAlarming = true;
-        _timerAlarmEndMs = now + TIMER_ALARM_DURATION_MS;
+        _timerAlarmEndMs = now + _timerAlarmDurationMs;
         _lastAlarmBeepMs = 0; // fires the first alarm beep immediately, below
     }
 
@@ -136,7 +157,7 @@ void CHUZAFace::updateTimer() {
 }
 
 void CHUZAFace::update() {
-    if (!_displayFound) return;
+    if (!_displayFound || !_displayEnabled) return;
 
     _touch.update();
     uint8_t taps = _touch.consumeTapCount();
@@ -236,8 +257,27 @@ void CHUZAFace::update() {
             playNote(_buzzer, 700, 30);
         }
         if (taps > 0) _menuLastInputMs = millis();
-        if (millis() - _menuLastInputMs > MENU_TIMEOUT_MS) {
+        if (millis() - _menuLastInputMs > _menuTimeoutMs) {
             _menuActive = false;
+        }
+    } else if (_menuPage == MODE_PAGE && _wanderSubMenu) {
+        // Picking a wander mode: single tap walks the cursor through
+        // OFF/SOFT/NORMAL, double tap commits whatever it's on now and
+        // closes the submenu.
+        if (taps == 1) {
+            _wanderCursor = (_wanderCursor + 1) % 3;
+            playNote(_buzzer, 1500, 30);
+        } else if (taps >= 2) {
+            _wander.setMode((WanderModeSetting)_wanderCursor);
+            _wanderSubMenu = false;
+            static const uint16_t f[] = {1300, 1800};
+            static const uint16_t d[] = {50, 70};
+            _buzzer.playSequence(f, d, 2);
+        }
+        if (taps > 0) _menuLastInputMs = millis();
+        if (millis() - _menuLastInputMs > _menuTimeoutMs) {
+            _menuActive = false;
+            _wanderSubMenu = false;
         }
     } else {
         if (taps == 2 && _menuPage == STOPWATCH_PAGE) {
@@ -255,12 +295,19 @@ void CHUZAFace::update() {
             static const uint16_t f[] = {1100, 1400};
             static const uint16_t d[] = {50, 50};
             _buzzer.playSequence(f, d, 2);
+        } else if (taps == 2 && _menuPage == MODE_PAGE) {
+            _wanderSubMenu = true;
+            _wanderCursor = (uint8_t)_wander.getMode();
+            _menuLastInputMs = millis();
+            static const uint16_t f[] = {1100, 1500};
+            static const uint16_t d[] = {50, 50};
+            _buzzer.playSequence(f, d, 2);
         } else if (taps >= 1) {
             _menuPage = (_menuPage + 1) % MENU_PAGE_COUNT;
             _menuLastInputMs = millis();
             playNote(_buzzer, 1400, 35);
         }
-        if (millis() - _menuLastInputMs > MENU_TIMEOUT_MS) {
+        if (millis() - _menuLastInputMs > _menuTimeoutMs) {
             _menuActive = false;
         }
     }
@@ -372,6 +419,29 @@ void CHUZAFace::drawMenu() {
                 _display.setTextSize(1);
                 _display.setCursor(0, 48);
                 _display.println("dbl-tap to start");
+            }
+            break;
+        }
+        case MODE_PAGE: {
+            _display.setTextSize(1);
+            _display.setCursor(0, 0);
+            _display.println("== Wander Mode ==");
+
+            if (_wanderSubMenu) {
+                for (uint8_t i = 0; i < 3; i++) {
+                    _display.setCursor(10, 16 + i * 14);
+                    _display.print(i == _wanderCursor ? "> " : "  ");
+                    _display.println(WANDER_MODE_LABELS[i]);
+                }
+                _display.setCursor(0, 56);
+                _display.println("tap:next  dbl:set");
+            } else {
+                _display.setTextSize(2);
+                _display.setCursor(4, 24);
+                _display.println(WANDER_MODE_LABELS[_wander.getMode()]);
+                _display.setTextSize(1);
+                _display.setCursor(0, 52);
+                _display.println("dbl-tap to set");
             }
             break;
         }

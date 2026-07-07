@@ -8,7 +8,7 @@ import time
 import threading
 from collections import deque
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 import paho.mqtt.client as mqtt # type: ignore
 import requests # type: ignore
 from PIL import Image, ImageTk # type: ignore
@@ -41,6 +41,40 @@ LOCAL_STREAM_PORT = 81
 LOCAL_PROBE_INTERVAL_SEC = 4.0
 LOCAL_PROBE_TIMEOUT_SEC = 0.6
 
+# --- Settings screen ---
+# Mirrors RobotSettings (lib/CHUZASettings on the device) field-for-field -
+# key names here are the exact JSON keys published on robot/settings and
+# expected in a set_settings command's "settings" object. (key, label,
+# kind, low, high) - low/high are the Spinbox range for int/float kinds,
+# unused for bool/choice.
+SETTINGS_SCHEMA = {
+    "Timing": [
+        ("angryTimeoutSec", "Angry timeout (sec)", "int", 5, 3600),
+        ("tiredHoldSec", "Tired hold (sec)", "int", 1, 600),
+        ("menuTimeoutSec", "Menu auto-off (sec)", "int", 2, 120),
+        ("timerAlarmSec", "Timer alarm duration (sec)", "int", 1, 120),
+    ],
+    "Threshold": [
+        ("lowBattPct", "Low battery (%)", "int", 0, 100),
+        ("cliffThresholdMm", "Cliff threshold (mm)", "int", 10, 500),
+        ("touchSensitivity", "Touch sensitivity", "float", 1.02, 3.0),
+        ("wheelMinPwm", "Wheel min PWM", "int", 0, 255),
+        ("wheelMaxPwm", "Wheel max PWM", "int", 0, 255),
+        ("wheelRampRate", "Wheel ramp rate (%/s)", "int", 10, 2000),
+    ],
+    "Hardware": [
+        ("motorsEnabled", "Motors", "bool", None, None),
+        ("oledEnabled", "OLED display", "bool", None, None),
+        ("buzzerEnabled", "Buzzer", "bool", None, None),
+        ("envSensorEnabled", "Environment sensor (BME280)", "bool", None, None),
+        ("distSensorEnabled", "Distance sensor (ToF)", "bool", None, None),
+    ],
+    "Behavior": [
+        ("wanderMode", "Wander mode", "choice", None, None),
+    ],
+}
+SETTINGS_CHOICES = {"wanderMode": ["OFF", "SOFT", "NORMAL"]}
+
 
 def get_app_dir():
     """Folder the exe (or script) lives in — used to find config.json
@@ -62,6 +96,7 @@ def load_config():
             "topic_telemetry": "robot/telemetry",
             "topic_commands": "robot/commands",
             "topic_camera_frame": "robot/camera/frame",
+            "topic_settings": "robot/settings",
         }
         with open(path, "w") as f:
             json.dump(default, f, indent=2)
@@ -81,11 +116,12 @@ class MqttBridge:
     background thread — they only ever call back into the GUI via the
     provided callbacks, which the GUI marshals onto the Tk thread."""
 
-    def __init__(self, config, on_status, on_telemetry, on_frame):
+    def __init__(self, config, on_status, on_telemetry, on_frame, on_settings):
         self.cfg = config
         self.on_status_cb = on_status
         self.on_telemetry_cb = on_telemetry
         self.on_frame_cb = on_frame
+        self.on_settings_cb = on_settings
 
         self.client = mqtt.Client(
             client_id=f"chuza-pc-{int(time.time())}", clean_session=True
@@ -116,6 +152,7 @@ class MqttBridge:
             client.subscribe(self.cfg["topic_status"])
             client.subscribe(self.cfg["topic_telemetry"])
             client.subscribe(self.cfg.get("topic_camera_frame", "robot/camera/frame"))
+            client.subscribe(self.cfg.get("topic_settings", "robot/settings"))
         else:
             self.on_status_cb("connecting")
 
@@ -143,6 +180,11 @@ class MqttBridge:
                 pass
         elif msg.topic == self.cfg.get("topic_camera_frame", "robot/camera/frame"):
             self.on_frame_cb(msg.payload)
+        elif msg.topic == self.cfg.get("topic_settings", "robot/settings"):
+            try:
+                self.on_settings_cb(json.loads(msg.payload.decode()))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
 
     def publish_command(self, payload_dict):
         self.client.publish(self.cfg["topic_commands"], json.dumps(payload_dict), qos=0)
@@ -265,6 +307,104 @@ class LocalLink:
                 buf = buf[body_start + length:]
 
 
+class SettingsWindow(tk.Toplevel):
+    """One tab per SETTINGS_SCHEMA section, each field bound to a Tk
+    variable. Values are seeded from ControlApp.settings_cache (the last
+    robot/settings snapshot) and refreshed live if a new one arrives
+    while this window is open (see ControlApp._apply_settings) - e.g.
+    right after Save, so the fields always show what the device actually
+    applied/clamped rather than just what was typed."""
+
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.app = app
+        self.title("CHUZA Settings")
+        self.geometry("380x480")
+        self.vars = {}  # key -> (Tk variable, kind)
+
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=10, pady=(10, 4))
+
+        for section, fields in SETTINGS_SCHEMA.items():
+            tab = ttk.Frame(notebook, padding=12)
+            notebook.add(tab, text=section)
+            for key, label, kind, low, high in fields:
+                row = ttk.Frame(tab)
+                row.pack(fill="x", pady=4)
+                ttk.Label(row, text=label, width=24, wraplength=170, justify="left").pack(side="left")
+
+                if kind == "bool":
+                    var = tk.BooleanVar()
+                    ttk.Checkbutton(row, variable=var).pack(side="left")
+                elif kind == "choice":
+                    var = tk.StringVar()
+                    ttk.Combobox(
+                        row, textvariable=var, values=SETTINGS_CHOICES[key],
+                        state="readonly", width=10,
+                    ).pack(side="left")
+                elif kind == "float":
+                    var = tk.DoubleVar()
+                    ttk.Spinbox(
+                        row, textvariable=var, from_=low, to=high,
+                        increment=0.01, width=10, format="%.2f",
+                    ).pack(side="left")
+                else:  # int
+                    var = tk.IntVar()
+                    ttk.Spinbox(row, textvariable=var, from_=low, to=high, width=10).pack(side="left")
+
+                self.vars[key] = (var, kind)
+
+        btn_row = ttk.Frame(self, padding=(10, 4, 10, 4))
+        btn_row.pack(fill="x")
+        ttk.Button(
+            btn_row, text="Save for Current Session", command=self._save_session
+        ).pack(side="left", expand=True, fill="x", padx=(0, 4))
+        ttk.Button(
+            btn_row, text="Save to Default", command=self._save_default
+        ).pack(side="left", expand=True, fill="x", padx=(4, 0))
+
+        self.status_var = tk.StringVar(value="Loading current values...")
+        ttk.Label(self, textvariable=self.status_var, foreground="#2e7d32").pack(pady=(0, 10))
+
+        self.app.request_settings_refresh()
+        self.refresh_from_cache()
+
+    def refresh_from_cache(self):
+        cache = self.app.settings_cache
+        for key, (var, kind) in self.vars.items():
+            if key not in cache:
+                continue
+            value = cache[key]
+            if kind == "choice":
+                labels = SETTINGS_CHOICES[key]
+                var.set(labels[value] if isinstance(value, int) else value)
+            else:
+                var.set(value)
+        if cache:
+            self.status_var.set("")
+
+    def _collect(self):
+        out = {}
+        for key, (var, kind) in self.vars.items():
+            if kind == "choice":
+                out[key] = SETTINGS_CHOICES[key].index(var.get())
+            elif kind == "bool":
+                out[key] = bool(var.get())
+            elif kind == "float":
+                out[key] = float(var.get())
+            else:
+                out[key] = int(var.get())
+        return out
+
+    def _save_session(self):
+        self.app.send_settings(self._collect(), persist=False)
+        self.status_var.set("Applied for this session (lost on next reboot).")
+
+    def _save_default(self):
+        self.app.send_settings(self._collect(), persist=True)
+        self.status_var.set("Saved as the new boot default.")
+
+
 class ControlApp:
     def __init__(self, root, config):
         self.root = root
@@ -283,6 +423,10 @@ class ControlApp:
         self.cam_wanted_on = False  # what we last asked for (survives until telemetry confirms)
         self._photo = None          # keep a reference so Tk doesn't GC the image
         self._frame_times = deque()
+        self._last_frame_bytes = None  # raw JPEG of the last decoded frame, for Capture Photo
+
+        self.settings_cache = {}    # latest robot/settings snapshot, keyed same as SETTINGS_SCHEMA
+        self._settings_window = None
 
         self._build_home_view()
         self._build_control_view()
@@ -290,7 +434,7 @@ class ControlApp:
 
         self.local = LocalLink(self._on_frame, self._on_local_mode_change)
         self.mqtt = MqttBridge(
-            config, self._on_mqtt_status, self._on_telemetry, self._on_frame
+            config, self._on_mqtt_status, self._on_telemetry, self._on_frame, self._on_settings
         )
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -328,6 +472,23 @@ class ControlApp:
         ttk.Label(top, textvariable=self.control_status_var).pack(side="right")
         self.mode_var = tk.StringVar(value="Mode: Cloud")
         ttk.Label(top, textvariable=self.mode_var, width=12).pack(side="right", padx=(0, 12))
+
+        # Quick actions that live outside the Settings screen - Settings
+        # itself opens its own window; Set Timer/Capture Photo are one-shot
+        # actions, not persisted state, so a dialog/toast is enough.
+        actions = ttk.Frame(self.control)
+        actions.pack(fill="x", pady=(8, 0))
+        ttk.Button(actions, text="Settings", command=self._open_settings, takefocus=0).pack(side="left")
+        ttk.Button(actions, text="Set Timer", command=self._set_timer_dialog, takefocus=0).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(actions, text="Capture Photo", command=self._capture_photo, takefocus=0).pack(
+            side="left", padx=(6, 0)
+        )
+        self.capture_status_var = tk.StringVar(value="")
+        ttk.Label(actions, textvariable=self.capture_status_var, font=("Segoe UI", 9)).pack(
+            side="left", padx=(10, 0)
+        )
 
         body = ttk.Frame(self.control)
         body.pack(fill="both", expand=True, pady=(12, 0))
@@ -484,6 +645,53 @@ class ControlApp:
             # Lets LocalLink start probing for a same-network fast path.
             self.local.set_ip(data["ip"])
 
+    # ---------- settings ----------
+    def _on_settings(self, data):
+        self.root.after(0, lambda: self._apply_settings(data))
+
+    def _apply_settings(self, data):
+        self.settings_cache.update(data)
+        # The device echoes back the authoritative (clamped) values after
+        # every set_settings, so keep an open Settings window in sync
+        # rather than showing stale numbers the user just changed.
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            self._settings_window.refresh_from_cache()
+
+    def request_settings_refresh(self):
+        self._send_command({"cmd": "get_settings"})
+
+    def send_settings(self, fields, persist):
+        self._send_command({"cmd": "set_settings", "persist": persist, "settings": fields})
+
+    def _open_settings(self):
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            self._settings_window.lift()
+            self._settings_window.focus_force()
+            return
+        self._settings_window = SettingsWindow(self)
+
+    # ---------- quick actions ----------
+    def _set_timer_dialog(self):
+        minutes = simpledialog.askinteger(
+            APP_TITLE, "Timer duration, in minutes (1-60):",
+            minvalue=1, maxvalue=60, initialvalue=5, parent=self.root,
+        )
+        if minutes is None:
+            return
+        self._send_command({"cmd": "set_timer", "minutes": minutes})
+        self.capture_status_var.set(f"Timer set: {minutes} min")
+
+    def _capture_photo(self):
+        if self._last_frame_bytes is None:
+            messagebox.showinfo(APP_TITLE, "No camera frame yet - turn the camera on first.")
+            return
+        photos_dir = os.path.join(get_app_dir(), "Photos")
+        os.makedirs(photos_dir, exist_ok=True)
+        filename = f"chuza_{time.strftime('%Y%m%d_%H%M%S')}.jpg"
+        with open(os.path.join(photos_dir, filename), "wb") as f:
+            f.write(self._last_frame_bytes)
+        self.capture_status_var.set(f"Saved: {filename}")
+
     # ---------- LAN-direct / cloud switching ----------
     def _send_command(self, payload_dict):
         if not self.local.send_command(payload_dict):
@@ -520,6 +728,7 @@ class ControlApp:
         except Exception:
             return  # partial/corrupt JPEG - just drop it, next frame will be fine
 
+        self._last_frame_bytes = payload
         self._photo = ImageTk.PhotoImage(image)
         self.video_label.config(image=self._photo)
 

@@ -34,6 +34,11 @@ public:
     // it, so call this at most once per loop iteration.
     uint8_t consumeTapCount();
 
+    // RobotSettings hook (threshold section). Clamped to [1.02, 3.0] -
+    // outside that range the pad reads as either permanently touched or
+    // never touched.
+    void setSensitivityRatio(float ratio);
+
     // Diagnostics, for picking/checking _sensitivityRatio on real
     // hardware via Serial - not needed for normal operation.
     uint32_t getRawValue() const;

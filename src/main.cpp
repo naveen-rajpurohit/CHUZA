@@ -12,6 +12,8 @@
 #include "MqttLink.h"
 #include "CHUZALocalLink.h"
 #include "Scheduler.h"
+#include "WanderMode.h"
+#include "RobotSettings.h"
 
 CHUZAWheels wheels(PIN_LF, PIN_LB, PIN_RF, PIN_RB);
 EnvSensor envSensor(PIN_SDA, PIN_SCL);
@@ -19,7 +21,9 @@ BatterySensor battery(PIN_BATT_SENSE);
 DistanceSensor distanceSensor(PIN_SDA, PIN_SCL);
 TouchSensor touchSensor(PIN_TOUCH);
 Buzzer buzzer(PIN_BUZZER);
-CHUZAFace face(PIN_SDA, PIN_SCL, touchSensor, buzzer, envSensor, battery, distanceSensor);
+WanderMode wander;
+CHUZAFace face(PIN_SDA, PIN_SCL, touchSensor, buzzer, envSensor, battery, distanceSensor, wander);
+RobotSettings settings(wheels, face, touchSensor, buzzer, wander);
 
 CameraPins camPins = {
     CAM_PIN_PWDN, CAM_PIN_RESET, CAM_PIN_XCLK, CAM_PIN_SIOD, CAM_PIN_SIOC,
@@ -28,7 +32,7 @@ CameraPins camPins = {
 };
 CHUZACamera camera(camPins);
 
-MqttLink mqttLink(wheels, envSensor, camera, battery, distanceSensor);
+MqttLink mqttLink(wheels, envSensor, camera, battery, distanceSensor, face, settings);
 CHUZALocalLink localLink(wheels, camera);
 Scheduler scheduler;
 
@@ -37,7 +41,7 @@ void updateMotors() {
 }
 
 void updateEnvSensor() {
-    envSensor.update();
+    if (settings.envSensorEnabled) envSensor.update();
 }
 
 void updateBattery() {
@@ -45,7 +49,12 @@ void updateBattery() {
 }
 
 void updateDistance() {
+    if (!settings.distSensorEnabled) {
+        wheels.setCliffBlocked(false); // no sensor feeding it - don't leave a stale block in place
+        return;
+    }
     distanceSensor.update();
+    wheels.setCliffBlocked(distanceSensor.getDistanceMm() > settings.cliffThresholdMm);
 }
 
 void updateFace() {
@@ -56,11 +65,16 @@ void updateBuzzer() {
     buzzer.update();
 }
 
+void updateWander() {
+    wander.update(wheels);
+}
+
 void setup() {
     Serial.begin(115200);
 
+    randomSeed(esp_random()); // so WanderMode's bursts aren't the same sequence every boot
+
     wheels.begin();
-    wheels.setRampRate(250); // percent/sec — tune this once, here
 
     if (!envSensor.begin()) {
         Serial.println("BME280 not found - check wiring/I2C address");
@@ -81,6 +95,11 @@ void setup() {
     if (!camera.begin()) {
         Serial.println("Camera init failed - check the Sense board/ribbon cable");
     }
+
+    // Loads last-saved-as-default values from NVS (or the hardcoded
+    // defaults on first boot) and pushes them into wheels/face/touch/
+    // buzzer/wander - must run after all of those begin() calls above.
+    settings.begin();
 
     delay(2000);
 
@@ -110,6 +129,7 @@ void setup() {
     scheduler.addTask(updateDistance, 100);  // VL53L0X ranging tick, every 100ms
     scheduler.addTask(updateFace, 33);       // touch + eyes/menu tick, ~30fps
     scheduler.addTask(updateBuzzer, 5);      // buzzer note/gap timing tick, tight for clean beeps
+    scheduler.addTask(updateWander, 10);     // wander dice-roll + burst timing tick, same cadence as the motor ramp
 }
 
 void loop() {

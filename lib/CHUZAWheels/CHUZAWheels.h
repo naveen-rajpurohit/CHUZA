@@ -38,8 +38,43 @@ public:
     // Requires update() to keep being called — it does NOT delay().
     void moveBurst(int leftSpeedPct, int rightSpeedPct, int durationMs);
 
+    // Jumps straight to the requested speed, bypassing the ramp
+    // entirely (both current AND target are set immediately). For
+    // WanderMode's snappy full-power personality twitches, where a
+    // move as short as 5-18ms would be mostly eaten by the ramp before
+    // ever reaching speed.
+    void setInstant(int leftSpeedPct, int rightSpeedPct);
+
+    // Cliff safety: call from the distance-sensor tick with whether the
+    // floor is currently missing from under the down-facing ToF sensor
+    // (desk edge, stairs, etc). Rising edge triggers an immediate
+    // brake(); while true, every command below silently clamps any
+    // wheel's FORWARD component to 0 (reverse/pivot-away stays live) so
+    // nothing can drive the robot further over the edge.
+    void setCliffBlocked(bool blocked);
+    bool isCliffBlocked() const;
+
+    // Marks "a manual drive command just came in" - call this from
+    // wherever manual commands are dispatched (see
+    // dispatchRobotCommand() in CHUZACommand.h). WanderMode polls
+    // msSinceManualCommand() so it never fights a live joystick session.
+    void noteManualCommand();
+    unsigned long msSinceManualCommand() const;
+
+    // Overrides the stiction-breaking PWM floor / ceiling set below.
+    // Clamped to [0,255] with min <= max.
+    void setPwmRange(int minPwm, int maxPwm);
+
+    // Hardware kill-switch (RobotSettings' "motorsEnabled"). Disabling
+    // brakes immediately, then every speed-setting entry point below
+    // clamps to 0 - in both directions, unlike the cliff clamp - until
+    // re-enabled.
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
+
 private:
     void applyMotorOutput(uint8_t fwdChannel, uint8_t revChannel, int speedPct);
+    int clampForSafety(int speedPct) const;
 
     uint8_t _lfPin, _lbPin, _rfPin, _rbPin;
 
@@ -47,9 +82,11 @@ private:
     const int _pwmRes = 8;
 
     // --- Hardware Calibration Limits ---
-    // The lowest PWM value that breaks stiction under the robot's own weight
-    const int _minPwm = 180;
-    const int _maxPwm = 255;
+    // The lowest PWM value that breaks stiction under the robot's own
+    // weight - overridable via setPwmRange() (RobotSettings' threshold
+    // section).
+    int _minPwm = 180;
+    int _maxPwm = 255;
 
     // --- Ramping state ---
     float _rampRatePctPerSec = 300.0f; // default; override with setRampRate()
@@ -62,4 +99,11 @@ private:
     // --- Non-blocking moveBurst state ---
     bool _burstActive = false;
     unsigned long _burstEndMs = 0;
+
+    // --- Cliff safety + manual-command tracking ---
+    bool _cliffBlocked = false;
+    unsigned long _lastManualCmdMs = 0;
+
+    // --- Hardware kill-switch ---
+    bool _hwEnabled = true;
 };

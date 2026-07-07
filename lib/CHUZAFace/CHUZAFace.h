@@ -6,6 +6,7 @@
 #include "BatterySensor.h"
 #include "DistanceSensor.h"
 #include "Buzzer.h"
+#include "WanderMode.h"
 
 // Forward-declared only: the concrete RoboEyes<Adafruit_SSD1306> type -
 // and RoboEyes.h's very generic macros (DEFAULT/ON/OFF/N/S/E/W/etc,
@@ -24,7 +25,7 @@ struct RoboEyesHandle;
 class CHUZAFace {
 public:
     CHUZAFace(uint8_t sdaPin, uint8_t sclPin, TouchSensor &touch, Buzzer &buzzer,
-              EnvSensor &env, BatterySensor &batt, DistanceSensor &dist);
+              EnvSensor &env, BatterySensor &batt, DistanceSensor &dist, WanderMode &wander);
     ~CHUZAFace();
 
     // Call once in setup(), after Wire has a chance to come up (order
@@ -41,6 +42,25 @@ public:
     // menu is even open - see STOPWATCH_PAGE/TIMER_PAGE in the .cpp.
     void update();
 
+    // --- RobotSettings hooks (see lib/CHUZASettings) ---
+    // All timeouts take milliseconds despite RobotSettings storing them
+    // in seconds - the conversion happens once, at the call site.
+    void setAngryTimeoutMs(unsigned long ms);
+    void setTiredHoldMs(unsigned long ms);
+    void setMenuTimeoutMs(unsigned long ms);
+    void setTimerAlarmDurationMs(unsigned long ms);
+    void setLowBatteryPct(uint8_t pct);
+
+    // Physically turns the OLED panel on/off (SSD1306_DISPLAYON/OFF).
+    // While off, update() returns immediately - no touch/mood/menu
+    // processing either, since there's nothing to see it react.
+    void setDisplayEnabled(bool enabled);
+
+    // Remote equivalent of double-tap-to-arm + single-tap-to-start on
+    // TIMER_PAGE - used by the "set_timer" command. Clamped to the same
+    // 1-60 minute range as the physical menu.
+    void startTimer(uint8_t minutes);
+
 private:
     void updateMood();
     void updateTimer();
@@ -52,10 +72,20 @@ private:
     EnvSensor &_env;
     BatterySensor &_batt;
     DistanceSensor &_dist;
+    WanderMode &_wander;
 
     Adafruit_SSD1306 _display;
     RoboEyesHandle *_eyes = nullptr;
     bool _displayFound = false;
+    bool _displayEnabled = true;
+
+    // RobotSettings-configurable timing/threshold - defaults match what
+    // used to be hardcoded static consts here.
+    unsigned long _angryTimeoutMs = 2UL * 60UL * 1000UL; // 2 minutes
+    unsigned long _tiredHoldMs = 10UL * 1000UL;
+    unsigned long _menuTimeoutMs = 10UL * 1000UL;
+    unsigned long _timerAlarmDurationMs = 10UL * 1000UL;
+    uint8_t _lowBatteryPct = 20;
 
     bool _menuActive = false;
     uint8_t _menuPage = 0;
@@ -84,4 +114,11 @@ private:
     unsigned long _timerEndMs = 0;       // millis() deadline, while running
     unsigned long _timerAlarmEndMs = 0;  // millis() the 10s alarm auto-silences
     unsigned long _lastAlarmBeepMs = 0;  // paces the repeating alarm beep
+
+    // Wander-mode picker, lives on MODE_PAGE - double tap there opens a
+    // 3-item cursor (OFF/SOFT/NORMAL); single tap moves the cursor,
+    // double tap again commits it as the active WanderMode and closes
+    // the submenu.
+    bool _wanderSubMenu = false;
+    uint8_t _wanderCursor = 0;
 };

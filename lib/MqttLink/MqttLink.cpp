@@ -20,19 +20,22 @@ static const char* TOPIC_COMMANDS_ACK  = "robot/commands/ack";
 static const char* TOPIC_TELEMETRY     = "robot/telemetry";
 static const char* TOPIC_STATUS        = "robot/status";
 static const char* TOPIC_CAMERA_FRAME  = "robot/camera/frame";
+static const char* TOPIC_SETTINGS      = "robot/settings";
 
 // QVGA JPEGs land around 4-5KB. PubSubClient's default 256-byte buffer
 // is only big enough for telemetry/commands, so bump it for the media
-// connection (the cmd connection never sees anything bigger than a
-// small JSON command/ack, so it keeps a small buffer).
+// connection. The cmd connection now also carries full settings
+// snapshots/updates (~16 fields), bigger than the old small
+// move/stop/brake commands, so it needs headroom past those too.
 static const uint16_t MEDIA_BUFFER_SIZE = 20480;
-static const uint16_t CMD_BUFFER_SIZE = 512;
+static const uint16_t CMD_BUFFER_SIZE = 1536;
 
 static const unsigned long TELEMETRY_INTERVAL_MS = 1500;
 static const unsigned long THERMAL_CHECK_INTERVAL_MS = 1000;
 
-MqttLink::MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist)
-    : _wheels(wheels), _env(env), _cam(cam), _batt(batt), _dist(dist),
+MqttLink::MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist,
+                    CHUZAFace &face, RobotSettings &settings)
+    : _wheels(wheels), _env(env), _cam(cam), _batt(batt), _dist(dist), _face(face), _settings(settings),
       _cmdMqtt(_cmdWifiClient), _mediaMqtt(_mediaWifiClient) {
     _instance = this;
 }
@@ -104,6 +107,7 @@ void MqttLink::reconnectCmd() {
         Serial.println(" connected.");
         _cmdMqtt.publish(TOPIC_STATUS, "online", true); // retained
         _cmdMqtt.subscribe(TOPIC_COMMANDS);
+        publishSettings(); // so a fresh connect/reconnect always shows the app current values
     } else {
         Serial.print(" failed, rc=");
         Serial.println(_cmdMqtt.state());
@@ -153,8 +157,26 @@ void MqttLink::publishTelemetry() {
     _mediaMqtt.publish(TOPIC_TELEMETRY, (const uint8_t*)buf, n);
 }
 
+void MqttLink::publishSettings() {
+    if (!_cmdMqtt.connected()) return;
+
+    StaticJsonDocument<512> doc;
+    _settings.toJson(doc);
+
+    char buf[512];
+    size_t n = serializeJson(doc, buf, sizeof(buf));
+    _cmdMqtt.publish(TOPIC_SETTINGS, (const uint8_t*)buf, n, true); // retained
+}
+
 void MqttLink::startNetworkTask() {
-    xTaskCreatePinnedToCore(cmdTaskTrampoline, "chuzaCmd", 4096, this, 2, &_cmdTaskHandle, 0);
+    // 4096 was enough back when the biggest payload here was a tiny
+    // move/stop/brake JSON command - it panic'ed with a stack canary
+    // overflow (Guru Meditation, "Stack canary watchpoint triggered
+    // (chuzaCmd)") once settings commands landed: dispatchRobotCommand's
+    // now-1KB JSON doc + char buf, on top of this task's own TLS
+    // (WiFiClientSecure) record processing and the NVS Preferences
+    // calls saveAsDefault() makes, all stack up in the same call chain.
+    xTaskCreatePinnedToCore(cmdTaskTrampoline, "chuzaCmd", 16384, this, 2, &_cmdTaskHandle, 0);
     xTaskCreatePinnedToCore(mediaTaskTrampoline, "chuzaMedia", 6144, this, 1, &_mediaTaskHandle, 0);
 }
 
@@ -299,5 +321,7 @@ void MqttLink::handleCommand(char* topic, byte* payload, unsigned int length) {
     }
 #endif
 
-    dispatchRobotCommand(_wheels, _cam, payload, length);
+    if (dispatchRobotCommand(_wheels, _cam, payload, length, &_face, &_settings)) {
+        publishSettings();
+    }
 }

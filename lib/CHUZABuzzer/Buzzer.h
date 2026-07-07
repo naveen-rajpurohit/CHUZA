@@ -31,6 +31,12 @@ public:
 
     bool isPlaying() const;
 
+    // RobotSettings hook (hardware section). Disabling silences and
+    // clears the queue immediately, same as stop(), and beep()/
+    // playSequence() become no-ops until re-enabled.
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
+
 private:
     static const uint8_t QUEUE_CAPACITY = 16;
     struct Note { uint16_t freqHz; uint16_t durationMs; };
@@ -46,4 +52,5 @@ private:
     bool _noteActive = false;
     bool _inGap = false;
     unsigned long _stepEndMs = 0;
+    bool _enabled = true;
 };

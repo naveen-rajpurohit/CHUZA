@@ -62,3 +62,7 @@ uint8_t TouchSensor::consumeTapCount() {
 
 uint32_t TouchSensor::getRawValue() const { return _lastRaw; }
 uint32_t TouchSensor::getBaseline() const { return _baseline; }
+
+void TouchSensor::setSensitivityRatio(float ratio) {
+    _sensitivityRatio = constrain(ratio, 1.02f, 3.0f);
+}

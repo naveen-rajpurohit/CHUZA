@@ -10,6 +10,8 @@
 #include "BatterySensor.h"
 #include "DistanceSensor.h"
 #include "CHUZACamera.h"
+#include "CHUZAFace.h"
+#include "RobotSettings.h"
 
 // Connects to WiFi + a TLS MQTT broker (HiveMQ Cloud) using TWO
 // independent MQTT connections (own WiFiClientSecure + PubSubClient +
@@ -44,7 +46,8 @@
 // duplicating the same video.
 class MqttLink {
 public:
-    MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist);
+    MqttLink(CHUZAWheels &wheels, EnvSensor &env, CHUZACamera &cam, BatterySensor &batt, DistanceSensor &dist,
+             CHUZAFace &face, RobotSettings &settings);
 
     // Call once in setup(). Blocks for a few seconds while WiFi and the
     // cmd connection come up (the media connection connects lazily from
@@ -68,6 +71,7 @@ private:
     void reconnectCmd();
     void reconnectMedia();
     void publishTelemetry();
+    void publishSettings();
 
     static void cmdTaskTrampoline(void* param);
     void cmdTaskLoop();
@@ -79,6 +83,8 @@ private:
     CHUZACamera &_cam;
     BatterySensor &_batt;
     DistanceSensor &_dist;
+    CHUZAFace &_face;
+    RobotSettings &_settings;
 
     WiFiClientSecure _cmdWifiClient;
     PubSubClient _cmdMqtt;

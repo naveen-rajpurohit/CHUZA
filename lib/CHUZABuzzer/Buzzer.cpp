@@ -17,6 +17,7 @@ void Buzzer::begin() {
 }
 
 void Buzzer::beep(unsigned int freqHz, unsigned int durationMs) {
+    if (!_enabled) return;
     if (_queueCount >= QUEUE_CAPACITY) return; // dropped - queue backed up, shouldn't happen in practice
 
     uint8_t idx = (_queueHead + _queueCount) % QUEUE_CAPACITY;
@@ -44,6 +45,15 @@ void Buzzer::stop() {
 
 bool Buzzer::isPlaying() const {
     return _noteActive || _inGap || _queueCount > 0;
+}
+
+void Buzzer::setEnabled(bool enabled) {
+    _enabled = enabled;
+    if (!enabled) stop();
+}
+
+bool Buzzer::isEnabled() const {
+    return _enabled;
 }
 
 void Buzzer::startNextNote() {
