@@ -4,8 +4,8 @@
 // Do NOT commit this file with real credentials to a public repo —
 // add "include/Secrets.h" to your .gitignore.
 
-#define WIFI_SSID     "D-Link_DIR-816"                                      // wifi name (SSID)
-#define WIFI_PASSWORD ""                      
+#define WIFI_SSID     "iPhone"                                      // wifi name (SSID)
+#define WIFI_PASSWORD "bhulgaya"                      
 
 // From your HiveMQ Cloud cluster's "Overview" page
 #define MQTT_HOST      "5625cabb1caa437b9086bd6b10d6ac4d.s1.eu.hivemq.cloud"
