@@ -10,8 +10,8 @@ public:
     // adcPin: ADC-capable pin wired to the divider midpoint (see
     // PIN_BATT_SENSE in CHUZAPins.h). minVoltage/maxVoltage: the
     // empty/full voltage of the cell(s) powering the robot. Defaults
-    // are for a single-cell Li-ion/LiPo (3.6V ~ "dead", 4.2V ~ full).
-    explicit BatterySensor(uint8_t adcPin, float minVoltage = 3.6f, float maxVoltage = 4.2f);
+    // are for a single-cell Li-ion/LiPo (3.35V ~ "dead", 4.2V ~ full).
+    explicit BatterySensor(uint8_t adcPin, float minVoltage = 3.35f, float maxVoltage = 4.2f);
 
     // Call once in setup().
     void begin();
