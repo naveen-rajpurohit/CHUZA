@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>CHUZA Control</title>
+<meta name="theme-color" content="#0a0f0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CHUZA">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<!-- ============ LOGIN ============ -->
+<section id="screen-login" class="screen active">
+  <div class="screen-inner narrow">
+    <img class="brand-logo" src="icons/icon-192.png" alt="">
+    <h1 class="screen-title">CONNECT TO YOUR ROBOT</h1>
+    <div id="login-form-mount"></div>
+  </div>
+</section>
+
+<!-- ============ HOME ============ -->
+<section id="screen-home" class="screen">
+  <div class="screen-inner narrow center">
+    <img class="brand-logo" src="icons/icon-192.png" alt="">
+    <h1 class="brand-title">CHUZA</h1>
+    <p class="status-line" id="home-status">● CONNECTING...</p>
+    <button class="btn btn-primary btn-play" id="play-btn" disabled>PLAY</button>
+    <button class="btn btn-link" id="home-change-connection-btn">Change connection</button>
+  </div>
+</section>
+
+<!-- ============ CONTROL ============ -->
+<section id="screen-control" class="screen">
+  <div class="screen-inner wide">
+    <div class="topbar">
+      <button class="btn btn-small" id="control-back-btn">&lt; BACK</button>
+      <span class="topbar-status" id="control-status">● CONNECTING</span>
+    </div>
+
+    <div class="action-row">
+      <button class="btn" id="btn-settings">SETTINGS</button>
+      <button class="btn" id="btn-timer">TIMER</button>
+      <button class="btn" id="btn-capture">CAPTURE</button>
+      <button class="btn" id="btn-cam">CAM: OFF</button>
+    </div>
+
+    <div class="video-frame">
+      <img id="video-img" alt="Camera feed">
+      <div class="overheat-badge hidden" id="overheat-badge">! OVERHEAT - CAMERA OFF</div>
+    </div>
+
+    <div class="hud-grid">
+      <div class="hud-panel">
+        <h3>ENVIRONMENT</h3>
+        <p class="hud-line" id="env-line1">--</p>
+        <p class="hud-line" id="env-line2">--</p>
+      </div>
+      <div class="hud-panel">
+        <h3>BATTERY</h3>
+        <div class="health-bar"><div class="health-bar-fill" id="batt-fill"></div></div>
+        <p class="hud-line" id="batt-text">--</p>
+      </div>
+      <div class="hud-panel">
+        <h3>DISTANCE / CHIP TEMP</h3>
+        <p class="hud-line" id="dist-line1">--</p>
+        <p class="hud-line" id="dist-line2">--</p>
+      </div>
+      <div class="hud-panel">
+        <h3>LINK</h3>
+        <p class="hud-line">CLOUD</p>
+        <p class="hud-line" id="link-fps">0 fps</p>
+      </div>
+    </div>
+
+    <p class="target-readout" id="target-readout">L: 0%   R: 0%</p>
+
+    <div class="drive-controls">
+      <div class="dpad" aria-label="Drive controls">
+        <button class="dpad-btn dpad-up" data-key="w" aria-label="Forward">&#9650;</button>
+        <button class="dpad-btn dpad-left" data-key="a" aria-label="Left">&#9664;</button>
+        <button class="dpad-btn dpad-down" data-key="s" aria-label="Back">&#9660;</button>
+        <button class="dpad-btn dpad-right" data-key="d" aria-label="Right">&#9654;</button>
+      </div>
+      <div class="side-controls">
+        <button class="btn btn-boost" data-key="boost">BOOST</button>
+        <button class="btn btn-brake" data-key="brake">BRAKE</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="timer-overlay">
+    <div class="overlay-box">
+      <h3>SET TIMER</h3>
+      <div class="timer-input-row">
+        <input type="number" id="timer-minutes" min="1" max="60" value="5" inputmode="numeric">
+        <span>minutes</span>
+      </div>
+      <div class="overlay-actions">
+        <button class="btn btn-primary" id="timer-set-btn">SET</button>
+        <button class="btn" id="timer-cancel-btn">CANCEL</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section id="screen-settings" class="screen">
+  <div class="screen-inner wide">
+    <div class="topbar">
+      <button class="btn btn-small" id="settings-back-btn">&lt; BACK</button>
+      <span class="topbar-status">SETTINGS</span>
+    </div>
+
+    <div class="tabs" id="settings-tabs"></div>
+    <div class="settings-content" id="settings-content"></div>
+
+    <div class="settings-actions">
+      <button class="btn btn-primary" id="settings-apply-btn">APPLY SESSION</button>
+      <button class="btn btn-primary" id="settings-save-btn">SAVE DEFAULT</button>
+    </div>
+    <button class="btn btn-block" id="change-connection-btn">CHANGE CONNECTION...</button>
+    <p class="status-line small" id="settings-status"></p>
+  </div>
+
+  <div class="overlay hidden" id="connection-overlay">
+    <div class="overlay-box connection-overlay-box">
+      <div id="connection-form-mount"></div>
+      <button class="btn" id="connection-cancel-btn">CANCEL</button>
+    </div>
+  </div>
+</section>
+
+<template id="tmpl-connection-form">
+  <form class="connection-form" novalidate>
+    <label>Broker host
+      <input name="broker_host" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+    </label>
+    <label>Broker port
+      <input name="broker_port" type="number" inputmode="numeric" required>
+    </label>
+    <label>Username
+      <input name="username" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="off" required>
+    </label>
+    <details class="advanced">
+      <summary>ADVANCED</summary>
+      <label>Status topic<input name="topic_status" type="text"></label>
+      <label>Telemetry topic<input name="topic_telemetry" type="text"></label>
+      <label>Commands topic<input name="topic_commands" type="text"></label>
+      <label>Camera frame topic<input name="topic_camera_frame" type="text"></label>
+      <label>Settings topic<input name="topic_settings" type="text"></label>
+    </details>
+    <p class="form-error" role="alert"></p>
+    <button type="submit" class="btn btn-primary btn-block save-btn">CONNECT</button>
+  </form>
+</template>
+
+<script src="js/lib/mqtt.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
